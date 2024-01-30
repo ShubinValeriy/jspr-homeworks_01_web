@@ -1,3 +1,4 @@
+
 import server.Handler;
 import server.Server;
 
@@ -7,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
+
 
 public class Main {
     public static void main(String[] args) throws InterruptedException {
@@ -54,6 +56,7 @@ public class Main {
                 throw new RuntimeException(e);
             }
         };
+
         Handler handlerForClassic = (request, responseStream) -> {
             try {
                 // определяем директорию запрашиваемого файла
@@ -82,13 +85,27 @@ public class Main {
             }
         };
 
+        Handler handlerForPrimitive = (request, responseStream) -> {
+            try {
+                responseStream.write((
+                        "HTTP/1.1 200 OK\r\n" +
+                                "Content-Length: " + 0 + "\r\n" +
+                                "Connection: close\r\n" +
+                                "\r\n"
+                ).getBytes());
+                responseStream.flush();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        };
+
         server.addHandler("GET", "/spring.svg", handler);
         server.addHandler("GET", "/styles.css", handler);
         server.addHandler("GET", "/spring.png", handler);
         server.addHandler("GET", "/app.js", handler);
         server.addHandler("GET", "/resources.html", handler);
         server.addHandler("GET", "/classic.html", handlerForClassic);
-
+        server.addHandler("GET", "/", handlerForPrimitive);
 
         server.listen(9999);
         // даем поработать 30 секунд и закрываем

@@ -6,10 +6,14 @@ import server.request.RequestLine;
 import java.io.*;
 import java.net.Socket;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 
 public class ClientHandler implements Runnable {
+    //УСТАНАВЛИВАЕМ ЛИМИТ на request line + заголовки
+    private final int LIMIT = 4096;
     private final Socket SOCKET;
     private final Map<String, Map<String, Handler>> HANDLERS_MAP;
 
@@ -21,16 +25,19 @@ public class ClientHandler implements Runnable {
     // Парсер Request
     private Request getRequestFromBufferedInputStream(BufferedInputStream bis) {
         try {
-            // читаем весь запрос в байтах
-            var buffer = new byte[bis.available()];
-            bis.read(buffer);
+
+            //ограничиваем входящий поток данных нашим ЛИМИТОМ
+            bis.mark(LIMIT);
+            //зачитываем в буфер данные, ограниченные нашим ЛИМИТОМ
+            var buffer = new byte[LIMIT];
+            final var read = bis.read(buffer); // read - количество фактически прочтенных байтов
 
             // выполняем поиск requestLine
 
             // определим разделитель /r/n
             final byte[] requestLineSeparator = new byte[]{'\r', '\n'};
             // найдем окончание requestLine (если его нет, то вернем null вместо значения)
-            final int indexEndRequestLine = findIndex(buffer, requestLineSeparator, 0);
+            final int indexEndRequestLine = findIndex(buffer, requestLineSeparator, 0, read);
             if (indexEndRequestLine == -1) {
                 return null;
             }
@@ -40,7 +47,14 @@ public class ClientHandler implements Runnable {
             if (requestLineArray.length != 3) {
                 return null;
             }
+
             // сформируем объект RequestLine
+
+            //проверим корректно ли формируется path
+            final var path = requestLineArray[1];
+            if (!path.startsWith("/")) {
+                return null;
+            }
             RequestLine requestLine = new RequestLine(
                     requestLineArray[0],
                     requestLineArray[1],
@@ -56,7 +70,8 @@ public class ClientHandler implements Runnable {
             final int indexEndHeaders = findIndex(
                     buffer,
                     headersSeparator,
-                    indexStartHeaders
+                    indexStartHeaders,
+                    read
             );
             if (indexEndHeaders == -1) {
                 return null;
@@ -69,12 +84,25 @@ public class ClientHandler implements Runnable {
 
             // выполняем поиск тела запроса и формируем Request
             int indexStartBody = indexEndHeaders + headersSeparator.length;
-            if (indexStartBody == buffer.length) {
+            bis.reset();
+            if (indexStartBody == bis.available()) {
                 return new Request(requestLine, headers);
             }
-            bis.reset();
             bis.skip(indexStartBody);
-            return new Request(requestLine, headers, bis);
+
+            // вычитываем Content-Length, чтобы прочитать body
+            final var contentLength = extractHeader(
+                    Arrays.asList(headers.split("\r\n")),
+                    "Content-Length"
+            );
+            if (contentLength.isPresent()) {
+                final var length = Integer.parseInt(contentLength.get());
+                final var bodyBytes = bis.readNBytes(length);
+                return new Request(requestLine, headers, bodyBytes);
+            } else {
+                return null;
+            }
+
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -82,8 +110,12 @@ public class ClientHandler implements Runnable {
 
     // Метод поиска Индекса
     private int findIndex(byte[] array, byte[] target, int start) {
+        return findIndex(array, target, start, array.length);
+    }
+
+    private int findIndex(byte[] array, byte[] target, int start, int max) {
         outer:
-        for (int i = start; i < array.length - target.length + 1; i++) {
+        for (int i = start; i < max - target.length + 1; i++) {
             for (int j = 0; j < target.length; j++) {
                 if (array[i + j] != target[j]) {
                     continue outer;
@@ -92,6 +124,15 @@ public class ClientHandler implements Runnable {
             return i;
         }
         return -1;
+    }
+
+    // поиск конкретного заголовка из списка заголовков
+    private static Optional<String> extractHeader(List<String> headers, String header) {
+        return headers.stream()
+                .filter(o -> o.startsWith(header))
+                .map(o -> o.substring(o.indexOf(" ")))
+                .map(String::trim)
+                .findFirst();
     }
 
     // Bad request
@@ -137,13 +178,15 @@ public class ClientHandler implements Runnable {
             } else {
                 String requestMethod = request.getRequestLine().getRequestMethod();
                 String requestURL = request.getRequestLine().getRequestURL();
+                int indexQuerySeparator = requestURL.indexOf('?');
+                String requestPath = indexQuerySeparator > 0 ?
+                        requestURL.substring(0, indexQuerySeparator) : requestURL;
                 if (
                         HANDLERS_MAP.containsKey(requestMethod) &&
-                                HANDLERS_MAP.get(requestMethod).containsKey(requestURL)
+                                HANDLERS_MAP.get(requestMethod).containsKey(requestPath)
                 ) {
-                    Handler handler = HANDLERS_MAP.get(requestMethod).get(requestURL);
+                    Handler handler = HANDLERS_MAP.get(requestMethod).get(requestPath);
                     handler.handle(request, out);
-
                 } else {
                     notFound(out);
                 }
