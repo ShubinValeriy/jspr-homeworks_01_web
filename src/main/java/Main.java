@@ -106,6 +106,7 @@ public class Main {
         server.addHandler("GET", "/resources.html", handler);
         server.addHandler("GET", "/classic.html", handlerForClassic);
         server.addHandler("GET", "/", handlerForPrimitive);
+        server.addHandler("POST", "/", handlerForPrimitive);
 
         server.listen(9999);
         // даем поработать 30 секунд и закрываем
