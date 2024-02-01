@@ -154,7 +154,6 @@ public class ClientHandler implements Runnable {
                 int indexQuerySeparator = requestURL.indexOf('?');
                 String requestPath = indexQuerySeparator > 0 ?
                         requestURL.substring(0, indexQuerySeparator) : requestURL;
-                System.out.println(request.getPostParams());
                 if (
                         HANDLERS_MAP.containsKey(requestMethod) &&
                                 HANDLERS_MAP.get(requestMethod).containsKey(requestPath)
