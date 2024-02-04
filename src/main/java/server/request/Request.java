@@ -13,16 +13,19 @@ public class Request {
     private RequestLine requestLine;
     private String headers;
     private byte[] body;
+    private List<NameValuePair> listQueries;
 
     public Request(RequestLine requestLine, String headers, byte[] body) {
         this.requestLine = requestLine;
         this.headers = headers;
         this.body = body;
+        this.listQueries = parsRequestLine(requestLine);
     }
 
     public Request(RequestLine requestLine, String headers) {
         this.requestLine = requestLine;
         this.headers = headers;
+        this.listQueries = parsRequestLine(requestLine);
     }
 
     public RequestLine getRequestLine() {
@@ -43,25 +46,25 @@ public class Request {
 
 
     // функциональность обработки параметров запроса для получения параметров из Query String
+    public List<NameValuePair> getQueryParams() {
+        return listQueries;
+    }
+
     public List<NameValuePair> getQueryParam(String name) {
+        return listQueries.stream().
+                filter(s -> s.getName().equals(name)).
+                collect(Collectors.toList());
+    }
+
+    //Парсинг requestLine для получения параметров из Query
+    private List<NameValuePair> parsRequestLine(RequestLine requestLine) {
         try {
             URIBuilder uriBuilder = new URIBuilder(requestLine.getRequestURL());
-            List<NameValuePair> listQueries = uriBuilder.getQueryParams();
-            if (name.isEmpty()) {
-                return listQueries;
-            }
-            List<NameValuePair> listQueriesForName = listQueries.stream().
-                    filter(s -> s.getName().equals(name)).
-                    collect(Collectors.toList());
-            return listQueriesForName;
+            return uriBuilder.getQueryParams();
         } catch (
                 URISyntaxException e) {
             throw new RuntimeException(e);
         }
-    }
-
-    public List<NameValuePair> getQueryParams() {
-        return getQueryParam("");
     }
 
 
