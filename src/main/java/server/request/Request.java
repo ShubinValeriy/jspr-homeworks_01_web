@@ -1,6 +1,5 @@
 package server.request;
 
-
 import org.apache.hc.core5.http.NameValuePair;
 import org.apache.hc.core5.net.URIBuilder;
 import server.tools.Tools;
@@ -20,16 +19,19 @@ public class Request {
     private final RequestLine requestLine;
     private final String headers;
     private byte[] body;
+    private List<NameValuePair> listQueries;
 
     public Request(RequestLine requestLine, String headers, byte[] body) {
         this.requestLine = requestLine;
         this.headers = headers;
         this.body = body;
+        this.listQueries = parsRequestLine(requestLine);
     }
 
     public Request(RequestLine requestLine, String headers) {
         this.requestLine = requestLine;
         this.headers = headers;
+        this.listQueries = parsRequestLine(requestLine);
     }
 
     public RequestLine getRequestLine() {
@@ -51,29 +53,31 @@ public class Request {
 
     // функциональность обработки параметров запроса для получения параметров из Query String
     public List<NameValuePair> getQueryParam(String name) {
+        return listQueries.stream().
+                filter(s -> s.getName().equals(name)).
+                collect(Collectors.toList());
+    }
+
+    public List<NameValuePair> getQueryParams() {
+        return listQueries;
+    }
+
+    //Парсинг requestLine для получения параметров из Query
+    private List<NameValuePair> parsRequestLine(RequestLine requestLine) {
         try {
             URIBuilder uriBuilder = new URIBuilder(requestLine.getRequestURL());
-            List<NameValuePair> listQueries = uriBuilder.getQueryParams();
-            if (name.isEmpty()) {
-                return listQueries;
-            }
-            return listQueries.stream().
-                    filter(s -> s.getName().equals(name)).
-                    collect(Collectors.toList());
+            return uriBuilder.getQueryParams();
         } catch (
                 URISyntaxException e) {
             throw new RuntimeException(e);
         }
     }
 
-    public List<NameValuePair> getQueryParams() {
-        return getQueryParam("");
-    }
 
     // Функциональность обработки тела, оформленного в виде x-www-form-url-encoded запроса для
     // получения параметров, переданных в теле запроса
 
-    public List<NameValuePair> getPostParam(String name) {
+    public List<NameValuePair> getPostParams() {
         // проверяем, что тело запроса есть
         if (!requestLine.getRequestMethod().equals("POST") || getBody() == null) {
             return null;
@@ -84,19 +88,15 @@ public class Request {
                 "Content-Type"
         );
         if (contentType.isPresent() && contentType.get().equals(CONTENT_TYPE.get(0))) {
-            List<NameValuePair> postParams = getNameValuePairsFromStringBody(new String(getBody()));
-            if (name.isEmpty()) {
-                return postParams;
-            }
-            return postParams.stream().
-                    filter(s -> s.getName().equals(name)).
-                    collect(Collectors.toList());
+            return getNameValuePairsFromStringBody(new String(getBody()));
         }
         return null;
     }
 
-    public List<NameValuePair> getPostParams() {
-        return getPostParam("");
+    public List<NameValuePair> getPostParam(String name) {
+        return getPostParams().stream().
+                filter(s -> s.getName().equals(name)).
+                collect(Collectors.toList());
     }
 
     private List<NameValuePair> getNameValuePairsFromStringBody(String stringBody) {
